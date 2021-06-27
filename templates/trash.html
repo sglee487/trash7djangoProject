@@ -1,0 +1,152 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x" crossorigin="anonymous">
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+<div>
+    <h3>내 웹캠 화면</h3>
+    <video id="webcam" autoplay style="display: none"></video>
+    <canvas id="canvas"></canvas>
+    <br/>
+    <button id="trash_capture">감지하기!</button>
+    <br/>
+    <canvas id="canvas_crop" height="224" width="224" style="display: none"></canvas>
+    <div>
+        결과:
+    </div>
+    <ul id="trash-list" style="overflow-y: scroll;height: 800px;"></ul>
+</div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript">
+        $(function () {
+
+            //시간 관련된 코드
+            Date.prototype.yyyymmdd = function() {
+            var mm = this.getMonth() + 1; // getMonth() is zero-based
+            var dd = this.getDate();
+
+            return [this.getFullYear(),
+                    (mm>9 ? '' : '0') + mm,
+                    (dd>9 ? '' : '0') + dd
+                    ].join('-');
+            };
+            Date.prototype.hhmmss = function() {
+            var hh = this.getHours();
+            var mm = this.getMinutes();
+            var ss = this.getSeconds();
+
+            return [(hh>9 ? '' : '0') + hh,
+                    (mm>9 ? '' : '0') + mm,
+                    (ss>9 ? '' : '0') + ss,
+                    ].join(':');
+            };
+
+            var video = document.getElementById('webcam');
+            var canvas = document.getElementById('canvas');
+            var context = canvas.getContext('2d');
+            var canvas_crop = document.getElementById('canvas_crop');
+            var context_crop = canvas_crop.getContext('2d');
+
+            // video, canvas 크기
+            var video_canvas_w = 600, video_canvas_h = 450;
+            var bbox = 224
+
+            video.setAttribute('width', video_canvas_w)
+            video.setAttribute('height', video_canvas_h)
+            canvas.setAttribute('width', video_canvas_w)
+            canvas.setAttribute('height', video_canvas_h)
+
+
+
+            var x=parseInt(video_canvas_w/2 - bbox/2);
+            var y=parseInt(video_canvas_h/2 - bbox/2);
+            var w=bbox;
+            var h=bbox;
+            // 카메라 이식 및 사용
+            if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({
+                    video: true
+                }).then(function (stream) {
+                    video.srcObject = stream;
+                    video.play();
+                });
+            }
+
+            // 매 100ms 마다 canvas 중앙에 네모 그리기
+            setInterval(function (){
+                if(!video.paused){
+                    context.drawImage(video, 0, 0, video_canvas_w, video_canvas_h);
+                    context.beginPath();
+                    context.rect(parseInt(x), parseInt(y), parseInt(w), parseInt(h));
+                    context.lineWidth = 2;
+                    context.strokeStyle = '#4db8ff';
+                    context.stroke();
+                }
+            },100)
+
+            // 감지하기 버튼 클릭하면 감지 시작하기
+            $('#trash_capture').click(function (){
+                //보내는 순간 박스를 없애기 위해 다시 영상을 로드함
+                context.drawImage(video, 0, 0, video_canvas_w, video_canvas_h);
+                context_crop.drawImage(video, parseInt(x), parseInt(y), parseInt(w), parseInt(h), 0,0,224,224);
+                context_crop.beginPath();
+                context_crop.stroke();
+                var dataURL = canvas_crop.toDataURL();
+                trashClassify(dataURL);
+            })
+
+            // dataURL 받아서 쓰레기 구분하기
+            function trashClassify(dataURL){
+                $.post('trashclassify',
+                    {
+                        'image': dataURL,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'
+                    },
+                function (data) {
+                    var table = document.createElement("table");
+                    var tr1 = document.createElement("tr");
+                    var tr1th1 = document.createElement("th");
+                    var tr1th2 = document.createElement("th");
+                    var tr2 = document.createElement("tr");
+                    var tr2th1 = document.createElement("th");
+                    var tr2th2 = document.createElement("th");
+
+                    tr1th1.innerText = 'Picture'
+                    tr1th2.innerText = 'Trash'
+                    tr1.appendChild(tr1th1)
+                    tr1.appendChild(tr1th2)
+                    table.appendChild(tr1);
+
+                    var now = new Date();
+                    tr2th1.innerHTML = "<div>" + now.yyyymmdd()+' '+now.hhmmss() + "<div/>"
+                    document.querySelector('#trash-list').prepend(table);
+                    var img = document.createElement("img");
+                    img.src = dataURL;
+                    tr2th1.appendChild(img);
+
+                    data = JSON.parse(data)
+                    console.log(data.values);
+                    console.log(data.trashes);
+                    datum = ''
+
+                    for (let i=0; i<3; i++){
+                        datum += "<div>" + data.trashes[i] + " : " + data.values[i] + "<div/>";
+                    }
+
+                    tr2th2.innerHTML = datum
+                    tr2.appendChild(tr2th1);
+                    tr2.appendChild(tr2th2);
+                    table.appendChild(tr2);
+
+
+                });
+            }
+        })
+    </script>
+</body>
+</html>
