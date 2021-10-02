@@ -1,0 +1,1 @@
+python -u manage.py runsslserver 0:8000 --certificate django.cert --key django.key
